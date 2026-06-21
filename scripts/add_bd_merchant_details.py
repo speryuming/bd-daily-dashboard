@@ -55,14 +55,6 @@ def html_table(frame: pd.DataFrame) -> str:
 
 
 def find_source_file() -> Path:
-    candidates = [
-        ROOT / "商户日报6(1).xlsx",
-        ROOT / "商户日报6（1）.xlsx",
-        ROOT / "商户日报6.20.xlsx",
-    ]
-    for path in candidates:
-        if path.exists():
-            return path
     files = sorted(ROOT.glob("商户日报*.xlsx"), key=lambda p: p.stat().st_mtime, reverse=True)
     if not files:
         raise FileNotFoundError("未找到商户日报*.xlsx")
@@ -241,6 +233,12 @@ def main_cli() -> int:
     html_block = build_bd_merchant_html(summary, detail_by_bd)
 
     dashboard_html = DASHBOARD_DIR / "dashboard.html"
+    root_dashboard_html = REPORT_DIR / "dashboard.html"
+    if root_dashboard_html.exists() and (
+        not dashboard_html.exists() or root_dashboard_html.stat().st_mtime >= dashboard_html.stat().st_mtime
+    ):
+        DASHBOARD_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(root_dashboard_html, dashboard_html)
     html_text = dashboard_html.read_text(encoding="utf-8")
     # Remove a previous generated merchant-detail block if present.
     start = html_text.find("<h2>BD商户明细</h2>")
@@ -253,7 +251,7 @@ def main_cli() -> int:
         insert_at = html_text.rfind("</main>")
     html_text = html_text[:insert_at] + html_block + html_text[insert_at:]
     dashboard_html.write_text(html_text, encoding="utf-8")
-    (REPORT_DIR / "dashboard.html").write_text(html_text, encoding="utf-8")
+    root_dashboard_html.write_text(html_text, encoding="utf-8")
 
     data_path = DASHBOARD_DIR / "dashboard_data.json"
     data = json.loads(data_path.read_text(encoding="utf-8"))
