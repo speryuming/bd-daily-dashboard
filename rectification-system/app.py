@@ -14,6 +14,7 @@ import secrets
 import sqlite3
 import threading
 import time
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from http.cookies import SimpleCookie
@@ -21,6 +22,11 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from openpyxl import load_workbook
+
+try:
+    import turso_serverless
+except ImportError:
+    turso_serverless = None
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
@@ -199,7 +205,16 @@ def parse_workbook(path: Path, sheet_name: str, year: int) -> list[dict]:
         wb.close()
 
 
-def connect() -> sqlite3.Connection:
+def connect():
+    remote_url = clean(os.environ.get("TURSO_DATABASE_URL"))
+    if remote_url:
+        if turso_serverless is None:
+            raise RuntimeError("缺少 turso_serverless 数据库驱动")
+        db = turso_serverless.connect(
+            remote_url, auth_token=os.environ.get("TURSO_AUTH_TOKEN", "")
+        )
+        db.row_factory = turso_serverless.Row
+        return db
     DATA.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(DB_PATH, timeout=10)
     db.row_factory = sqlite3.Row
@@ -209,8 +224,21 @@ def connect() -> sqlite3.Connection:
     return db
 
 
+@contextmanager
+def database():
+    db = connect()
+    try:
+        yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
 def init_db() -> None:
-    with connect() as db:
+    with database() as db:
         db.executescript("""
         CREATE TABLE IF NOT EXISTS issues (
           id INTEGER PRIMARY KEY, discovered_date TEXT NOT NULL,
@@ -302,7 +330,8 @@ def create_user(db: sqlite3.Connection, username: str, password: str, display_na
             (username,display_name,role,salt,password_hash,created_by,created_at)
             VALUES (?,?,?,?,?,?,?)""",
             (username, display_name, role, salt.hex(), password_hash(password, salt), created_by, now()))
-    except sqlite3.IntegrityError:
+    except tuple(x for x in (sqlite3.IntegrityError,
+                             getattr(turso_serverless, "IntegrityError", None)) if x):
         raise ValueError("该账号已存在")
 
 
@@ -484,7 +513,7 @@ class Handler(BaseHTTPRequestHandler):
             self.respond({"version": APP_VERSION})
             return
         if parsed.path == "/api/auth":
-            with connect() as db:
+            with database() as db:
                 user = user_from_cookie(db, self.headers.get("Cookie", ""))
                 count = db.execute("SELECT COUNT(*) FROM users").fetchone()[0]
                 self.respond({"user": dict(user) if user else None,
@@ -492,7 +521,7 @@ class Handler(BaseHTTPRequestHandler):
                               "setup_needed": count == 0})
             return
         if parsed.path == "/api/users":
-            with connect() as db:
+            with database() as db:
                 if not self.authorize(db, "manager"): return
                 self.respond({"items": [dict(x) for x in db.execute(
                     "SELECT id,username,display_name,role,active FROM users ORDER BY role,display_name")]})
@@ -501,7 +530,7 @@ class Handler(BaseHTTPRequestHandler):
             qs = parse_qs(parsed.query)
             status = qs.get("status", [""])[0]
             q = qs.get("q", [""])[0]
-            with connect() as db:
+            with database() as db:
                 if not self.authorize(db): return
                 where, args = [], []
                 if status and status != "全部":
@@ -517,20 +546,20 @@ class Handler(BaseHTTPRequestHandler):
                 self.respond({"items": [dict(x) for x in db.execute(sql, args)]})
             return
         if parsed.path == "/api/summary":
-            with connect() as db:
+            with database() as db:
                 if not self.authorize(db): return
                 counts = {r["status"]: r["n"] for r in db.execute("SELECT status,COUNT(*) n FROM issues GROUP BY status")}
                 self.respond({"counts": counts, "total": sum(counts.values()), "today": today(),
                               "unmapped": db.execute("SELECT COUNT(*) FROM issues WHERE mapping_id IS NULL").fetchone()[0]})
             return
         if parsed.path == "/api/mappings":
-            with connect() as db:
+            with database() as db:
                 if not self.authorize(db, "manager"): return
                 self.respond({"items": [dict(x) for x in db.execute("SELECT * FROM mappings WHERE active=1 ORDER BY id DESC")]})
             return
         m = re.fullmatch(r"/api/issues/(\d+)", parsed.path)
         if m:
-            with connect() as db:
+            with database() as db:
                 if not self.authorize(db): return
                 row = db.execute("""SELECT i.*,m.own_merchant_id,m.own_store_name,m.competitor_store_name,
                     m.competitor_url FROM issues i LEFT JOIN mappings m ON i.mapping_id=m.id WHERE i.id=?""", (int(m[1]),)).fetchone()
@@ -571,7 +600,7 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path in {"/api/setup-manager", "/api/login", "/api/logout", "/api/users", "/api/managers"}:
             data = self.read_json()
-            with connect() as db:
+            with database() as db:
                 if path == "/api/setup-manager":
                     db.execute("BEGIN IMMEDIATE")
                     if db.execute("SELECT COUNT(*) FROM users").fetchone()[0]:
@@ -612,13 +641,13 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/issues/manual":
             data = self.read_json()
-            with connect() as db:
+            with database() as db:
                 manager = require_user(db, self.headers.get("Cookie", ""), "manager")
                 issue_id = create_manual_issue(db, data, manager["display_name"])
             self.respond({"ok": True, "id": issue_id})
             return
         if path == "/api/upload":
-            with connect() as db:
+            with database() as db:
                 require_user(db, self.headers.get("Cookie", ""), "manager")
             length = int(self.headers.get("Content-Length", "0"))
             if length <= 0 or length > MAX_UPLOAD:
@@ -644,7 +673,7 @@ class Handler(BaseHTTPRequestHandler):
             self.respond({"token": sha, "filename": filename, "sheets": sheet_names(dest)})
             return
         if path == "/api/import-preview" or path == "/api/import-commit":
-            with connect() as db:
+            with database() as db:
                 require_user(db, self.headers.get("Cookie", ""), "manager")
             data = self.read_json()
             token = clean(data.get("token"))
@@ -667,7 +696,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.respond({"rows": rows[:200], "total": len(rows),
                               "needs_date": sum(not x["discovered_date"] for x in rows)})
             else:
-                with connect() as db:
+                with database() as db:
                     result = import_rows(db, rows, token, sheet)
                 self.respond({"result": result})
             return
@@ -676,7 +705,7 @@ class Handler(BaseHTTPRequestHandler):
             self.fail("接口不存在", 404); return
         issue_id, operation = int(m[1]), m[2]
         data = self.read_json()
-        with connect() as db:
+        with database() as db:
             user = require_user(db, self.headers.get("Cookie", ""))
             issue = db.execute("SELECT * FROM issues WHERE id=?", (issue_id,)).fetchone()
             if not issue:
