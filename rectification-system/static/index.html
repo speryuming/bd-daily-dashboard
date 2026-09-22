@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>福泉整改跟进</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">福</span><div><strong>整改跟进</strong><small>福泉运营</small></div></div>
+    <nav><button class="nav active" data-view="work">问题跟进</button><button class="nav" data-view="import">添加问题</button></nav>
+    <div class="today" id="today"></div><button id="manager-button" class="manager-button">账号登录</button>
+  </header>
+  <main>
+    <section id="work-view">
+      <div class="page-title"><div><p class="eyebrow">OPERATIONS</p><h1>问题店铺跟进</h1><p class="subtitle">白天添加，晚上反馈，次日复核。店铺映射可以稍后补齐。</p></div><button class="primary" id="go-import">添加今日问题</button></div>
+      <div class="stats" id="stats"></div>
+      <div class="workspace">
+        <section class="panel list-panel">
+          <div class="panel-head"><div><h2>问题清单</h2><span id="list-count"></span></div><div class="controls"><select id="status-filter"><option>全部</option><option>待反馈</option><option>待复核</option><option>待核查</option><option>例外待决策</option><option>通过</option></select><input id="search" placeholder="搜索店铺、问题或负责人"></div></div>
+          <div id="issue-list" class="issue-list"></div>
+        </section>
+        <section class="panel detail-panel" id="detail-panel"><div class="empty-detail"><div class="empty-icon">◎</div><h2>选择一条问题</h2><p>查看整改反馈、次日复核和历史记录。</p></div></section>
+      </div>
+    </section>
+    <section id="import-view" hidden>
+      <div class="page-title"><div><p class="eyebrow">ADD ISSUES</p><h1>添加运营问题</h1><p class="subtitle">可以手动新增单条问题，也可以从现有运营表批量导入。</p></div></div>
+      <section class="panel manual-panel">
+        <div class="panel-head"><div><h2>手动添加问题</h2><span>适合临时发现的单条问题</span></div></div>
+        <form id="manual-issue-form" class="manual-form">
+          <div class="manual-grid">
+            <label>发现日期<input name="discovered_date" id="manual-date" type="date" required></label>
+            <label>店铺名称<input name="raw_store_name" placeholder="填写我方店铺名称" required maxlength="200"></label>
+            <label>问题类型<select name="issue_type" required><option>爆品团商品对标</option><option>神抢手商品对标</option><option>超抢手商品对标</option><option>商品价格</option><option>配送费</option><option>起送价</option><option>一口价</option><option>活动商品数量</option><option>营业时间</option><option>店名</option><option>满减活动</option><option>其他</option></select></label>
+            <label>负责人<select name="owner" id="manual-owner"><option value="">暂不分派</option></select></label>
+            <label>整改截止日期<input name="due_date" id="manual-due-date" type="date"></label>
+            <label>商品名称（选填）<input name="product_name" placeholder="商品对标问题可填写"></label>
+          </div>
+          <label>问题描述<textarea name="issue_text" placeholder="写明与美团对标发现的问题，例如价格、配送费或缺少活动商品" required maxlength="3000"></textarea></label>
+          <details class="manual-extra"><summary>补充商品价格和销量（选填）</summary><div class="manual-grid"><label>美团价格<input name="competitor_price"></label><label>我方价格<input name="own_price"></label><label>美团销量<input name="competitor_sales"></label><label>我方销量<input name="own_sales"></label></div></details>
+          <button class="primary">添加到问题清单</button>
+        </form>
+      </section>
+      <div class="import-layout">
+        <section class="panel import-panel">
+          <div class="step">批量导入 <span>选择工作簿</span></div>
+          <label class="upload-box" for="file"><strong>选择 .xlsx 文件</strong><span>例如：福泉-运营问题反馈表.xlsx（上限 30MB）</span></label>
+          <input id="file" type="file" accept=".xlsx">
+          <p id="upload-result" class="hint">文件只保存在本机的系统数据目录。</p>
+          <div class="form-row"><label>工作表<select id="sheet" disabled><option value="">上传后选择</option></select></label><label>年份<input id="year" type="number" min="2020" max="2100" value="2026"></label></div>
+          <label class="fallback-label">原表缺日期时使用<input id="fallback-date" type="date"><span>仅用于空白日期的行；填好后重新预览并核对。</span></label>
+          <div class="actions"><button id="preview" class="secondary" disabled>预览问题</button><button id="commit" class="primary" disabled>确认导入</button></div>
+          <div id="import-message" class="message" hidden></div>
+        </section>
+        <section class="panel preview-panel"><div class="panel-head"><div><h2>导入预览</h2><span id="preview-count">尚未预览</span></div></div><div id="preview-list" class="preview-list"><div class="preview-empty">选择文件与工作表后，点击“预览问题”。</div></div></section>
+      </div>
+    </section>
+  </main>
+  <dialog id="manager-dialog" class="manager-dialog">
+    <div class="dialog-head"><h2>系统账号</h2><button id="close-manager" aria-label="关闭">×</button></div>
+    <p id="manager-hint" class="hint"></p>
+    <form id="manager-auth-form" class="detail-form">
+      <label>账号<input name="username" autocomplete="username" required></label>
+      <label>密码<input name="password" type="password" autocomplete="current-password" minlength="10" required></label>
+      <button class="primary" id="manager-auth-submit">登录</button>
+    </form>
+    <div id="account-tools" hidden>
+      <p id="signed-manager" class="signed-manager"></p>
+      <form id="add-manager-form" class="detail-form" hidden><h3>添加人员账号</h3><div class="two"><label>登录账号<input name="username" required></label><label>人员姓名<input name="display_name" required></label></div><div class="two"><label>角色<select name="role"><option value="staff">市场人员</option><option value="manager">管理人员</option></select></label><label>初始密码<input name="password" type="password" minlength="10" required></label></div><button class="secondary">添加账号</button></form>
+      <div id="account-list" class="account-list"></div>
+      <button id="logout-manager" class="text-button">退出登录</button>
+    </div>
+  </dialog>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

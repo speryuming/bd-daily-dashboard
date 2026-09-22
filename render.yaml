@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: fuquan-rectification
+    runtime: python
+    rootDir: rectification-system
+    plan: 0.5c-512mb
+    region: singapore
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py --host 0.0.0.0
+    healthCheckPath: /api/version
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: RECTIFICATION_DATA_DIR
+        value: /var/data
+      - key: RECTIFICATION_ADMIN_USERNAME
+        sync: false
+      - key: RECTIFICATION_ADMIN_PASSWORD
+        sync: false
+      - key: RECTIFICATION_ADMIN_NAME
+        sync: false
+    disk:
+      name: rectification-data
+      mountPath: /var/data
+      sizeGB: 1
