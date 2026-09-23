@@ -24,16 +24,16 @@ from urllib.parse import parse_qs, urlparse
 from openpyxl import load_workbook
 
 try:
-    import turso_serverless
+    import libsql
 except ImportError:
-    turso_serverless = None
+    libsql = None
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
 UPLOADS = DATA / "uploads"
 DB_PATH = DATA / "rectification.sqlite3"
 STATIC = ROOT / "static"
-APP_VERSION = "2026.09.23.5"
+APP_VERSION = "2026.09.23.6"
 MAX_UPLOAD = 30 * 1024 * 1024
 STATUS = {"待反馈", "待复核", "未通过", "待核查", "通过", "例外待决策"}
 TYPES = (
@@ -205,16 +205,79 @@ def parse_workbook(path: Path, sheet_name: str, year: int) -> list[dict]:
         wb.close()
 
 
+class CompatRow:
+    """Give libSQL tuple rows the sqlite3.Row interface used by the app."""
+
+    def __init__(self, columns, values):
+        self._columns = tuple(columns)
+        self._values = tuple(values)
+        self._index = {name: index for index, name in enumerate(self._columns)}
+
+    def keys(self):
+        return self._columns
+
+    def __getitem__(self, key):
+        return self._values[key] if isinstance(key, int) else self._values[self._index[key]]
+
+    def __iter__(self):
+        return iter(self._values)
+
+    def __len__(self):
+        return len(self._values)
+
+
+class CursorAdapter:
+    def __init__(self, cursor):
+        self._cursor = cursor
+
+    def _row(self, row):
+        if row is None:
+            return None
+        columns = [item[0] for item in (self._cursor.description or ())]
+        return CompatRow(columns, row)
+
+    def fetchone(self):
+        return self._row(self._cursor.fetchone())
+
+    def fetchall(self):
+        return [self._row(row) for row in self._cursor.fetchall()]
+
+    def __iter__(self):
+        while True:
+            row = self.fetchone()
+            if row is None:
+                break
+            yield row
+
+    def __getattr__(self, name):
+        return getattr(self._cursor, name)
+
+
+class ConnectionAdapter:
+    def __init__(self, connection):
+        self._connection = connection
+
+    def execute(self, *args, **kwargs):
+        return CursorAdapter(self._connection.execute(*args, **kwargs))
+
+    def executemany(self, *args, **kwargs):
+        return CursorAdapter(self._connection.executemany(*args, **kwargs))
+
+    def executescript(self, *args, **kwargs):
+        return CursorAdapter(self._connection.executescript(*args, **kwargs))
+
+    def __getattr__(self, name):
+        return getattr(self._connection, name)
+
+
 def connect():
     remote_url = clean(os.environ.get("TURSO_DATABASE_URL"))
     if remote_url:
-        if turso_serverless is None:
-            raise RuntimeError("缺少 turso_serverless 数据库驱动")
-        db = turso_serverless.connect(
+        if libsql is None:
+            raise RuntimeError("缺少 libsql 数据库驱动")
+        return ConnectionAdapter(libsql.connect(
             remote_url, auth_token=os.environ.get("TURSO_AUTH_TOKEN", "")
-        )
-        db.row_factory = turso_serverless.Row
-        return db
+        ))
     DATA.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(DB_PATH, timeout=10)
     db.row_factory = sqlite3.Row
@@ -330,9 +393,11 @@ def create_user(db: sqlite3.Connection, username: str, password: str, display_na
             (username,display_name,role,salt,password_hash,created_by,created_at)
             VALUES (?,?,?,?,?,?,?)""",
             (username, display_name, role, salt.hex(), password_hash(password, salt), created_by, now()))
-    except tuple(x for x in (sqlite3.IntegrityError,
-                             getattr(turso_serverless, "IntegrityError", None)) if x):
-        raise ValueError("该账号已存在")
+    except Exception as exc:
+        message = str(exc).lower()
+        if isinstance(exc, sqlite3.IntegrityError) or "constraint" in message or "unique" in message:
+            raise ValueError("该账号已存在") from exc
+        raise
 
 
 def create_manager(db: sqlite3.Connection, username: str, password: str, created_by: str) -> None:

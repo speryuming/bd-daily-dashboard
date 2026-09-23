@@ -17,9 +17,3 @@ services:
         sync: false
       - key: TURSO_AUTH_TOKEN
         sync: false
-      - key: RECTIFICATION_ADMIN_USERNAME
-        sync: false
-      - key: RECTIFICATION_ADMIN_PASSWORD
-        sync: false
-      - key: RECTIFICATION_ADMIN_NAME
-        sync: false
