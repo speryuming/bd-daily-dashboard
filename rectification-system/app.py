@@ -33,7 +33,7 @@ DATA = ROOT / "data"
 UPLOADS = DATA / "uploads"
 DB_PATH = DATA / "rectification.sqlite3"
 STATIC = ROOT / "static"
-APP_VERSION = "2026.09.23.6"
+APP_VERSION = "2026.09.23.7"
 MAX_UPLOAD = 30 * 1024 * 1024
 STATUS = {"待反馈", "待复核", "未通过", "待核查", "通过", "例外待决策"}
 TYPES = (
@@ -405,6 +405,18 @@ def create_manager(db: sqlite3.Connection, username: str, password: str, created
     create_user(db, username, password, username, "manager", created_by)
 
 
+def reset_user_password(db, user_id: int, password: str) -> None:
+    if len(password) < 10:
+        raise ValueError("新密码至少10个字符")
+    user = db.execute("SELECT id FROM users WHERE id=?", (user_id,)).fetchone()
+    if not user:
+        raise ValueError("账号不存在")
+    salt = secrets.token_bytes(16)
+    db.execute("UPDATE users SET salt=?,password_hash=? WHERE id=?",
+               (salt.hex(), password_hash(password, salt), user_id))
+    db.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
+
+
 def user_from_cookie(db: sqlite3.Connection, cookie_header: str):
     cookies = SimpleCookie()
     try:
@@ -663,6 +675,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def post_route(self):
         path = urlparse(self.path).path
+        reset_match = re.fullmatch(r"/api/users/(\d+)/reset-password", path)
+        if reset_match:
+            data = self.read_json()
+            with database() as db:
+                require_user(db, self.headers.get("Cookie", ""), "manager")
+                reset_user_password(db, int(reset_match[1]), str(data.get("password") or ""))
+                self.respond({"ok": True})
+            return
         if path in {"/api/setup-manager", "/api/login", "/api/logout", "/api/users", "/api/managers"}:
             data = self.read_json()
             with database() as db:

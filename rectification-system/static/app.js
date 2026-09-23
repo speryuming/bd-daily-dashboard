@@ -38,7 +38,15 @@ async function refreshAuth() {
   const manualOwner=$('#manual-owner');
   if(manualOwner) manualOwner.innerHTML='<option value="">暂不分派</option>'+users.filter(x=>x.active).map(x=>`<option value="${e(x.display_name)}">${e(x.display_name)}（${x.role==='manager'?'管理':'市场'}）</option>`).join('');
   const accountList=$('#account-list');
-  if(accountList) accountList.innerHTML=auth.manager?`<h3>现有账号</h3>${users.map(x=>`<div class="account-row"><strong>${e(x.display_name)}</strong><span>${e(x.username)} · ${x.role==='manager'?'管理人员':'市场人员'}</span></div>`).join('')}`:'';
+  if(accountList) {
+    accountList.innerHTML=auth.manager?`<h3>现有账号</h3>${users.map(x=>`<div class="account-row"><div><strong>${e(x.display_name)}</strong><span>${e(x.username)} · ${x.role==='manager'?'管理人员':'市场人员'}</span></div>${x.username!==auth.user.username?`<button class="secondary reset-password" data-id="${x.id}" data-name="${e(x.display_name)}">重置密码</button>`:''}</div>`).join('')}`:'';
+    document.querySelectorAll('.reset-password').forEach(button=>button.onclick=()=>{
+      const dialog=$('#reset-password-dialog'),form=$('#reset-password-form');
+      form.reset();form.elements.user_id.value=button.dataset.id;
+      $('#reset-password-name').textContent=button.dataset.name;
+      dialog.showModal();
+    });
+  }
   if(!auth.user && !$('#manager-dialog').open) $('#manager-dialog').showModal();
 }
 
@@ -205,6 +213,16 @@ $('#add-manager-form').onsubmit=async event=>{
   event.preventDefault();const form=new FormData(event.target);
   try {await request('/api/users',{username:String(form.get('username')||'').trim(),display_name:String(form.get('display_name')||'').trim(),role:String(form.get('role')||'staff'),password:String(form.get('password')||'')});event.target.reset();await refreshAuth();toast('已添加账号');}
   catch(err){toast(err.message);}
+};
+$('#close-reset-password').onclick=()=>$('#reset-password-dialog').close();
+$('#reset-password-form').onsubmit=async event=>{
+  event.preventDefault();const form=new FormData(event.target);
+  const password=String(form.get('password')||''),confirmation=String(form.get('password_confirm')||'');
+  if(password!==confirmation){toast('两次输入的密码不一致');return;}
+  try {
+    await request(`/api/users/${Number(form.get('user_id'))}/reset-password`,{password});
+    event.target.reset();$('#reset-password-dialog').close();toast('密码已重置，请将新密码告知该人员');
+  } catch(err){toast(err.message);}
 };
 $('#logout-manager').onclick=async()=>{try{await request('/api/logout',{});await refreshAuth();$('#manager-dialog').close();if(selectedId)await loadDetail(selectedId);toast('已退出');}catch(err){toast(err.message);}};
 setManualDefaults();

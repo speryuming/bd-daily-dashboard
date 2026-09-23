@@ -72,6 +72,16 @@
       <button id="logout-manager" class="text-button">退出登录</button>
     </div>
   </dialog>
+  <dialog id="reset-password-dialog" class="manager-dialog">
+    <div class="dialog-head"><h2>重置密码</h2><button id="close-reset-password" aria-label="关闭">×</button></div>
+    <p class="hint">正在为 <strong id="reset-password-name"></strong> 设置新密码。保存后，该账号已登录的设备会退出。</p>
+    <form id="reset-password-form" class="detail-form">
+      <input name="user_id" type="hidden">
+      <label>新密码<input name="password" type="password" minlength="10" autocomplete="new-password" required placeholder="至少10个字符"></label>
+      <label>再次输入<input name="password_confirm" type="password" minlength="10" autocomplete="new-password" required></label>
+      <button class="primary">确认重置</button>
+    </form>
+  </dialog>
   <div id="toast" role="status" aria-live="polite"></div>
   <script src="/app.js"></script>
 </body>
