@@ -32,6 +32,33 @@
       font-size: 26px;
       letter-spacing: 0;
     }
+    .header-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 6px;
+    }
+    .header-top h1 {
+      margin: 0;
+    }
+    .rectification-link {
+      display: inline-flex;
+      align-items: center;
+      min-height: 42px;
+      padding: 0 18px;
+      border: 1px solid rgba(255, 255, 255, .3);
+      border-radius: 10px;
+      background: #d92d20;
+      color: #fff;
+      font-size: 15px;
+      font-weight: 700;
+      text-decoration: none;
+      box-shadow: 0 6px 18px rgba(217, 45, 32, .28);
+    }
+    .rectification-link:hover {
+      background: #b42318;
+    }
     .meta {
       color: #cbd5e1;
     }
@@ -165,6 +192,16 @@
       box-shadow: none;
     }
     @media (max-width: 640px) {
+      header {
+        padding: 20px 16px;
+      }
+      .header-top {
+        align-items: stretch;
+        flex-direction: column;
+      }
+      .rectification-link {
+        justify-content: center;
+      }
       main {
         padding: 12px;
       }
@@ -180,7 +217,10 @@
 </head>
 <body>
   <header>
-    <h1>BD运营日报</h1>
+    <div class="header-top">
+      <h1>BD运营日报</h1>
+      <a class="rectification-link" href="https://fuquan-rectification.onrender.com/" target="_blank" rel="noopener">📋 进入整改跟进系统</a>
+    </div>
     <section class="section" id="health-score-card">
       <h2>📈 经营评分卡</h2>
       <div class="metric-grid">
