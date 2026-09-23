@@ -276,7 +276,7 @@ def connect():
         if libsql is None:
             raise RuntimeError("缺少 libsql 数据库驱动")
         return ConnectionAdapter(libsql.connect(
-            remote_url, auth_token=os.environ.get("TURSO_AUTH_TOKEN", "")
+            remote_url, auth_token=os.environ.get("TURSO_AUTH_TOKEN", "").strip()
         ))
     DATA.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(DB_PATH, timeout=10)
